@@ -17,7 +17,6 @@ phases:
       - curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
       - chmod +x kubectl
       - mv kubectl /usr/local/bin/
-      - kubectl version --client
       - echo "kubectl installed ✅"
 
   pre_build:
@@ -28,50 +27,34 @@ phases:
       - IMAGE_TAG=$CODEBUILD_BUILD_NUMBER
       - echo "Image tag is $IMAGE_TAG"
       - aws ecr describe-repositories --repository-names $ECR_REPO_NAME --region $AWS_REGION || aws ecr create-repository --repository-name $ECR_REPO_NAME --region $AWS_REGION
-      - echo "ECR login done ✅"
 
   build:
     commands:
-      - echo "Building JAR with Maven..."
+      - echo "Building JAR..."
       - mvn clean package -DskipTests
-      - echo "JAR built ✅"
-
       - echo "Running tests..."
       - mvn test
-      - echo "Tests passed ✅"
-
       - echo "Building Docker image..."
       - docker build -t $ECR_REGISTRY/$ECR_REPO_NAME:$IMAGE_TAG .
       - docker tag $ECR_REGISTRY/$ECR_REPO_NAME:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPO_NAME:latest
-      - echo "Docker build done ✅"
 
   post_build:
     commands:
       - echo "Pushing image to ECR..."
       - docker push $ECR_REGISTRY/$ECR_REPO_NAME:$IMAGE_TAG
       - docker push $ECR_REGISTRY/$ECR_REPO_NAME:latest
-      - echo "Pushed $ECR_REGISTRY/$ECR_REPO_NAME:$IMAGE_TAG ✅"
-
-      - echo "Connecting to EKS cluster..."
-      - aws eks update-kubeconfig --region $AWS_REGION --name $EKS_CLUSTER_NAME
-      - kubectl get nodes
-      - echo "EKS connected ✅"
-
-      - echo "Updating image in Deployment.yaml..."
+      - echo "Updating Deployment.yaml..."
       - sed -i "s|IMAGE_PLACEHOLDER|$ECR_REGISTRY/$ECR_REPO_NAME:$IMAGE_TAG|g" Deployment.yaml
-      - cat Deployment.yaml
-
-      - echo "Deploying to EKS..."
-      - kubectl apply -f Deployment.yaml --namespace=$K8S_NAMESPACE
-      - kubectl rollout status deployment/pipeline --namespace=$K8S_NAMESPACE --timeout=120s
-      - kubectl get pods -n $K8S_NAMESPACE
-      - kubectl get svc pipeline-service -n $K8S_NAMESPACE
-      - echo "Deployed successfully ✅"
+      - echo "Build complete ✅"
+      # REMOVED kubectl apply from here
+      # CodeDeploy will handle deployment
 
 artifacts:
   files:
     - target/myapp.jar
     - Deployment.yaml
+    - appspec.yml          ← added
+    - scripts/deploy.sh    ← added
   discard-paths: no
 
 reports:
